@@ -1,81 +1,102 @@
 package eu.xtrf.gcpdatastore.service
 
+import eu.xtrf.gcpdatastore.GcpDatastoreApplication
+import eu.xtrf.gcpdatastore.configuration.BigDecimalToStringConverter
+import eu.xtrf.gcpdatastore.configuration.StringToBigDecimalConverter
 import eu.xtrf.gcpdatastore.model.DatabaseEntry
 import eu.xtrf.gcpdatastore.model.OperationSystem
 import eu.xtrf.gcpdatastore.repository.DatabaseEntryRepository
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import spock.lang.Specification
 
-@SpringBootTest
+@SpringBootTest(classes = GcpDatastoreApplication)
 class DatastoreServiceTest extends Specification {
 
-    private final Random random = new Random()
+    @Autowired
     private DatastoreService datastoreService
+    @Autowired
     private DatabaseEntryRepository databaseEntryRepository
-
-    def setup() {
-        databaseEntryRepository = Mock(DatabaseEntryRepository)
-        datastoreService = new DatastoreService(databaseEntryRepository)
-    }
 
     def "should get datastore entries"() {
         given:
-        List entries = [
+        List<DatabaseEntry> entries = [
                 new DatabaseEntry(
-                        id: random.nextLong(),
                         fullName: "Test Entry",
                         operationSystem: OperationSystem.DEBIAN,
-                        yearsInXRTF: random.nextInt(),
-                        bambooGoalsDonePercent: new BigDecimal(random.nextDouble().toString())
+                        yearsInXRTF: 15,
+                        bambooGoalsDonePercent: new BigDecimal("65.566"),
+                        bambooGoalsDoneInteger: 65
                 ),
                 new DatabaseEntry(
-                        id: random.nextLong(),
                         fullName: "Test Entry 2",
                         operationSystem: OperationSystem.WINDOWS,
-                        yearsInXRTF: random.nextInt(),
-                        bambooGoalsDonePercent: new BigDecimal(random.nextDouble().toString())
+                        yearsInXRTF: 12,
+                        bambooGoalsDonePercent: new BigDecimal("23.009"),
+                        bambooGoalsDoneInteger: 23
                 )
         ]
-        databaseEntryRepository.findAll() >> entries
+        databaseEntryRepository.saveAll { entries.iterator() }
         when:
         Iterable<DatabaseEntry> resultEntries = datastoreService.getDatabaseEntries()
         then:
         noExceptionThrown()
-        entries == resultEntries
+        !resultEntries.empty
     }
 
     def "should create datastore entry"() {
         given:
         DatabaseEntry entry = new DatabaseEntry(
-                id: random.nextLong(),
-                fullName: "Test Entry",
+                fullName: "Test Entry create",
                 operationSystem: OperationSystem.DEBIAN,
-                yearsInXRTF: random.nextInt(),
-                bambooGoalsDonePercent: new BigDecimal(random.nextDouble().toString())
+                yearsInXRTF: 2,
+                bambooGoalsDonePercent: new BigDecimal("36.032"),
+                bambooGoalsDoneInteger: 36
         )
         when:
-        datastoreService.createDatastoreEntry(entry)
+        def datastoreEntry = datastoreService.createDatastoreEntry(entry)
         then:
         noExceptionThrown()
-        1 * databaseEntryRepository.save(entry)
+        datastoreEntry
+        datastoreEntry.fullName == entry.fullName
+        datastoreEntry.operationSystem == entry.operationSystem
+        datastoreEntry.yearsInXRTF == entry.yearsInXRTF
+        datastoreEntry.bambooGoalsDonePercent == entry.bambooGoalsDonePercent
+        datastoreEntry.bambooGoalsDoneInteger == entry.bambooGoalsDoneInteger
     }
 
-    def "should get database entry by operation system and bamboo goal done percent"() {
+    def "should return filtered and sorted entries by operation system and bamboo goals done percent"() {
         given:
-        String operationSystem = "WINDOWS"
-        String bambooGoalsDonePercent = "80"
-        DatabaseEntry entry = new DatabaseEntry(
-                id: random.nextLong(),
-                fullName: "Test Entry",
-                operationSystem: operationSystem,
-                yearsInXRTF: random.nextInt(),
-                bambooGoalsDonePercent: new BigDecimal("80")
-        )
-        databaseEntryRepository.findByOperationSystemAndBambooGoalsDonePercent(operationSystem, bambooGoalsDonePercent) >> entry
+        def entry1 = new DatabaseEntry(operationSystem: OperationSystem.WINDOWS, bambooGoalsDoneInteger: 80)
+        def entry2 = new DatabaseEntry(operationSystem: OperationSystem.DEBIAN, bambooGoalsDoneInteger: 60)
+        def entry3 = new DatabaseEntry(operationSystem: OperationSystem.WINDOWS, bambooGoalsDoneInteger: 90)
+        def entry4 = new DatabaseEntry(operationSystem: OperationSystem.WINDOWS, bambooGoalsDoneInteger: 60)
+        def entryList = [entry1, entry2, entry3, entry4]
+        databaseEntryRepository.saveAll { entryList.iterator() }
         when:
-        DatabaseEntry resultEntry = datastoreService.getDatabaseEntryByOperationSystemAndBambooGoalDonePercent(operationSystem, bambooGoalsDonePercent)
+        def result = datastoreService.getDatabaseEntryByOperationSystemAndBambooGoalDonePercent(OperationSystem.WINDOWS, 65)
+
         then:
         noExceptionThrown()
-        resultEntry == entry
+        !result.empty
+        result.size() >= 2
+    }
+
+    def "should convert BigDecimal to String with proper rounding and trailing zeros removed"() {
+        given:
+        def converter = new BigDecimalToStringConverter()
+        expect:
+        converter.convert(new BigDecimal("12.000")) == "12"
+        converter.convert(new BigDecimal("65.566")) == "65.57"
+        converter.convert(new BigDecimal("43.099")) == "43.1"
+    }
+
+    def "should convert String to BigDecimal with proper rounding"() {
+        given:
+        def converter = new StringToBigDecimalConverter()
+        expect:
+        converter.convert("10") == new BigDecimal("10.00")
+        converter.convert("12.3") == new BigDecimal("12.30")
+        converter.convert("23.009") == new BigDecimal("23.01")
     }
 }

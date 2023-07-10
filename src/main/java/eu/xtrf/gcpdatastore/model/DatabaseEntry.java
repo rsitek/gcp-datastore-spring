@@ -21,4 +21,5 @@ public class DatabaseEntry {
     private OperationSystem operationSystem;
     private Integer yearsInXRTF;
     private BigDecimal bambooGoalsDonePercent;
+    private Integer bambooGoalsDoneInteger;
 }
